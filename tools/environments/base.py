@@ -439,6 +439,37 @@ class BaseEnvironment(ABC):
                 f"source {_quoted_snap} >/dev/null 2>&1 || true"
             )
 
+        # Re-inject profile-scoped env vars AFTER sourcing the snapshot.
+        # The terminal tool reuses a single LocalEnvironment across all
+        # sessions in a gateway process (see _resolve_container_task_id →
+        # "default").  The snapshot captures env vars from whichever session
+        # last ran a command, so it can contain ANOTHER session's HERMES_HOME
+        # — sourcing it overrides the correct value that _inject_context_
+        # hermes_home set in the subprocess env.  Re-export the correct
+        # values here so the command sees the right profile.
+        try:
+            from hermes_constants import get_hermes_home_override
+            _override = get_hermes_home_override()
+        except Exception:
+            _override = None
+        _reinject = []
+        if _override:
+            _reinject.append(
+                f"export HERMES_HOME={shlex.quote(str(_override))}"
+            )
+        # HERMES_SESSION_ID from the session context ContextVar
+        try:
+            from gateway.session_context import _UNSET, _SESSION_ID
+            _sid = _SESSION_ID.get()
+            if _sid is not _UNSET and _sid:
+                _reinject.append(
+                    f"export HERMES_SESSION_ID={shlex.quote(str(_sid))}"
+                )
+        except Exception:
+            pass
+        if _reinject:
+            parts.append("; ".join(_reinject))
+
         # Preserve bare ``~`` expansion, but rewrite ``~/...`` through
         # ``$HOME`` so suffixes with spaces remain a single shell word.
         quoted_cwd = self._quote_cwd_for_cd(cwd)
