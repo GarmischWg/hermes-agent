@@ -4657,15 +4657,10 @@ def _(rid, params: dict) -> dict:
     # Cross-check and override if the Desktop's value doesn't match.
     discovered = _discover_profile_from_session(target)
     if discovered is not None:
-        resolved = str(discovered)
-        if profile_home is None or str(profile_home) != resolved:
+        if profile_home is None or str(profile_home) != str(discovered):
             logger.info("session.resume: overriding profile_home=%s -> %s (state.db)",
-                        profile_home, resolved)
-            profile_home = resolved
-        else:
-            profile_home = str(profile_home)
-    elif profile_home is not None:
-        profile_home = str(profile_home)
+                        profile_home, discovered)
+            profile_home = discovered
     logger.info("session.resume: target=%s desktop_profile=%s final=%s",
                 target, profile, profile_home)
 
