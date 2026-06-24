@@ -4372,18 +4372,8 @@ def _(rid, params: dict) -> dict:
     source = str(params.get("source") or "tui").strip() or "tui"
     _enable_gateway_prompts()
 
-    # ``profile`` (app-global remote mode): a new chat started under a non-launch
-    # profile must build its agent + persist against THAT profile's home/state.db,
-    # not the dashboard's launch profile. Stored on the session so _start_agent_build
-    # and each turn re-bind HERMES_HOME. None/own profile → launch (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
-    # Desktop doesn't send ``profile`` — fall back to gateway's active profile
-    if profile_home is None:
-        from hermes_cli.profiles import get_active_profile_name
-        gw_profile = get_active_profile_name()
-        if gw_profile not in ("default", "custom", ""):
-            profile_home = _profile_home(gw_profile)
 
     # The desktop composer owns its model/effort/fast as plain UI state and ships
     # it on every session.create. Honor each as a PER-SESSION override (built into
@@ -4623,15 +4613,9 @@ def _(rid, params: dict) -> dict:
     # local profile's state.db. None/own profile → the launch profile (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
-    # Desktop doesn't send ``profile`` — try to discover from state.db first,
-    # then fall back to gateway's active profile
+    # Desktop doesn't send ``profile`` — try to discover from state.db
     if profile_home is None:
         profile_home = _discover_profile_from_session(target)
-    if profile_home is None:
-        from hermes_cli.profiles import get_active_profile_name
-        gw_profile = get_active_profile_name()
-        if gw_profile not in ("default", "custom", ""):
-            profile_home = _profile_home(gw_profile)
 
     # In a profile scope, the agent OWNS a long-lived db handle bound to that
     # profile (do NOT auto-close it here). Otherwise reuse the shared launch db.
