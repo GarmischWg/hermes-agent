@@ -1058,6 +1058,15 @@ def _start_agent_build(sid: str, session: dict) -> None:
         notify_registered = False
         home_token = None
         profile_home = current.get("profile_home")
+        # Resume may set profile_home AFTER the worker spawns — run
+        # discovery here so the worker always gets the right home.
+        if profile_home is None and key:
+            discovered = _discover_profile_from_session(key)
+            if discovered is not None:
+                profile_home = str(discovered)
+                current["profile_home"] = profile_home
+                logger.info("_start_agent_build: discovered profile_home=%s for key=%s",
+                            profile_home, key)
         try:
             tokens = _set_session_context(key)
             # Build against the session's profile (global-remote): bind its
@@ -2261,6 +2270,12 @@ def _restart_slash_worker(sid: str, session: dict):
         except Exception:
             pass
     try:
+        profile_home = session.get("profile_home")
+        if profile_home is None:
+            discovered = _discover_profile_from_session(session["session_key"])
+            if discovered is not None:
+                profile_home = str(discovered)
+                session["profile_home"] = profile_home
         new_worker = _SlashWorker(
             session["session_key"],
             getattr(session.get("agent"), "model", _resolve_model()),
