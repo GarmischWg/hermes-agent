@@ -4015,7 +4015,8 @@ def _init_session(
         _attach_worker(
             sid,
             _sessions[sid],
-            _SlashWorker(key, getattr(agent, "model", _resolve_model())),
+            _SlashWorker(key, getattr(agent, "model", _resolve_model()),
+                        profile_home=_resolve_profile_home(_sessions[sid], key)),
         )
     except Exception:
         # Defer hard-failure to slash.exec; chat still works without slash worker.
