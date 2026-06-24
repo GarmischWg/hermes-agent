@@ -801,6 +801,30 @@ def _discover_profile_from_session(sid: str) -> Path | None:
     return None
 
 
+def _resolve_profile_home(session: dict, session_key: str) -> str | None:
+    """Resolve profile_home, always cross-checking with state.db.
+
+    The Desktop app may send a stale profile parameter (GUI switched but
+    internal state didn't catch up).  State.db is the durable source of
+    truth — the session was created under a specific profile.
+
+    Returns the resolved profile_home string, or None if undiscoverable.
+    Side effect: updates session["profile_home"] so subsequent calls are cheap.
+    """
+    current = session.get("profile_home")
+    discovered = _discover_profile_from_session(session_key)
+    if discovered is not None:
+        resolved = str(discovered)
+        if resolved != current:
+            logger.info(
+                "_resolve_profile_home: key=%s overriding %s -> %s (state.db)",
+                session_key, current, resolved,
+            )
+        session["profile_home"] = resolved
+        return resolved
+    return current
+
+
 # Placeholder ``terminal.cwd`` values that don't name a real directory — the
 # gateway resolves these to the home dir at runtime, so they must NOT be treated
 # as an explicit workspace (mirrors gateway/run.py's config bridge).
@@ -1057,16 +1081,7 @@ def _start_agent_build(sid: str, session: dict) -> None:
         worker = None
         notify_registered = False
         home_token = None
-        profile_home = current.get("profile_home")
-        # Resume may set profile_home AFTER the worker spawns — run
-        # discovery here so the worker always gets the right home.
-        if profile_home is None and key:
-            discovered = _discover_profile_from_session(key)
-            if discovered is not None:
-                profile_home = str(discovered)
-                current["profile_home"] = profile_home
-                logger.info("_start_agent_build: discovered profile_home=%s for key=%s",
-                            profile_home, key)
+        profile_home = _resolve_profile_home(current, key)
         try:
             tokens = _set_session_context(key)
             # Build against the session's profile (global-remote): bind its
@@ -2270,15 +2285,7 @@ def _restart_slash_worker(sid: str, session: dict):
         except Exception:
             pass
     try:
-        profile_home = session.get("profile_home")
-        logger.info("_restart_slash_worker: session=%s profile_home_from_dict=%s",
-                    session.get("session_key"), profile_home)
-        if profile_home is None:
-            discovered = _discover_profile_from_session(session["session_key"])
-            logger.info("_restart_slash_worker: discovery returned %s", discovered)
-            if discovered is not None:
-                profile_home = str(discovered)
-                session["profile_home"] = profile_home
+        profile_home = _resolve_profile_home(session, session["session_key"])
         new_worker = _SlashWorker(
             session["session_key"],
             getattr(session.get("agent"), "model", _resolve_model()),
@@ -4640,15 +4647,19 @@ def _(rid, params: dict) -> dict:
     # local profile's state.db. None/own profile → the launch profile (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
-    # Desktop may send a stale profile (GUI switched but internal state
-    # didn't catch up).  Always cross-check with state.db — the session
-    # was created under a specific profile and that fact is durable.
+    # Desktop may send a stale profile — state.db is the source of truth.
+    # Cross-check and override if the Desktop's value doesn't match.
     discovered = _discover_profile_from_session(target)
     if discovered is not None:
-        if profile_home is None or discovered != profile_home:
+        resolved = str(discovered)
+        if profile_home is None or str(profile_home) != resolved:
             logger.info("session.resume: overriding profile_home=%s -> %s (state.db)",
-                        profile_home, discovered)
-            profile_home = discovered
+                        profile_home, resolved)
+            profile_home = resolved
+        else:
+            profile_home = str(profile_home)
+    elif profile_home is not None:
+        profile_home = str(profile_home)
     logger.info("session.resume: target=%s desktop_profile=%s final=%s",
                 target, profile, profile_home)
 
@@ -10221,14 +10232,7 @@ def _(rid, params: dict) -> dict:
     worker = session.get("slash_worker")
     if not worker:
         try:
-            profile_home = session.get("profile_home")
-            # Resume may set profile_home after this handler runs — discover
-            if profile_home is None:
-                discovered = _discover_profile_from_session(session["session_key"])
-                logger.info("slash.exec: discovery returned %s", discovered)
-                if discovered is not None:
-                    profile_home = str(discovered)
-                    session["profile_home"] = profile_home
+            profile_home = _resolve_profile_home(session, session["session_key"])
             worker = _SlashWorker(
                 session["session_key"],
                 getattr(session.get("agent"), "model", _resolve_model()),
