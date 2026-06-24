@@ -4621,10 +4621,16 @@ def _(rid, params: dict) -> dict:
     # local profile's state.db. None/own profile → the launch profile (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
-    # Desktop doesn't send ``profile`` — try to discover from state.db
-    if profile_home is None:
-        profile_home = _discover_profile_from_session(target)
-    logger.info("session.resume: target=%s profile=%s profile_home=%s",
+    # Desktop may send a stale profile (GUI switched but internal state
+    # didn't catch up).  Always cross-check with state.db — the session
+    # was created under a specific profile and that fact is durable.
+    discovered = _discover_profile_from_session(target)
+    if discovered is not None:
+        if profile_home is None or discovered != profile_home:
+            logger.info("session.resume: overriding profile_home=%s -> %s (state.db)",
+                        profile_home, discovered)
+            profile_home = discovered
+    logger.info("session.resume: target=%s desktop_profile=%s final=%s",
                 target, profile, profile_home)
 
     # In a profile scope, the agent OWNS a long-lived db handle bound to that
