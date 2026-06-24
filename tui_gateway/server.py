@@ -237,6 +237,18 @@ class _SlashWorker:
         self.stderr_tail: list[str] = []
         self.stdout_queue: queue.Queue[dict | None] = queue.Queue()
 
+        # If no explicit profile_home was provided, try to discover it from
+        # the session's state.db entry.  This self-heals any code path that
+        # spawns a worker without threading the profile through.
+        if profile_home is None and session_key:
+            discovered = _discover_profile_from_session(session_key)
+            if discovered is not None:
+                profile_home = str(discovered)
+                logger.info(
+                    "slash_worker: discovered profile_home=%s for session=%s",
+                    profile_home, session_key,
+                )
+
         argv = [
             sys.executable,
             "-m",
