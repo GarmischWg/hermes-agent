@@ -1109,7 +1109,7 @@ def _start_agent_build(sid: str, session: dict) -> None:
             current["config_model_seen"] = _config_model_target()
 
             try:
-                worker = _SlashWorker(key, getattr(agent, "model", _resolve_model()), profile_home=current.get("profile_home"))
+                worker = _SlashWorker(key, getattr(agent, "model", _resolve_model()), profile_home=profile_home)
                 _attach_worker(sid, current, worker)
             except Exception:
                 pass
@@ -10221,10 +10221,18 @@ def _(rid, params: dict) -> dict:
     worker = session.get("slash_worker")
     if not worker:
         try:
+            profile_home = session.get("profile_home")
+            # Resume may set profile_home after this handler runs — discover
+            if profile_home is None:
+                discovered = _discover_profile_from_session(session["session_key"])
+                logger.info("slash.exec: discovery returned %s", discovered)
+                if discovered is not None:
+                    profile_home = str(discovered)
+                    session["profile_home"] = profile_home
             worker = _SlashWorker(
                 session["session_key"],
                 getattr(session.get("agent"), "model", _resolve_model()),
-                profile_home=session.get("profile_home"),
+                profile_home=profile_home,
             )
             _attach_worker(params.get("session_id", ""), session, worker)
         except Exception as e:
