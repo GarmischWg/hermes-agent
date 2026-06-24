@@ -750,12 +750,47 @@ def _profile_home(profile: str | None) -> Path | None:
         from hermes_cli import profiles as profiles_mod
 
         home = Path(profiles_mod.get_profile_dir(name))
+        if home.exists():
+            return home
     except Exception:
-        return None
-    # Already the launch profile? No override needed.
-    if home.resolve() == Path(_hermes_home).resolve():
-        return None
-    return home if (home / "state.db").exists() or home.exists() else None
+        pass
+    return None
+
+
+def _discover_profile_from_session(sid: str) -> Path | None:
+    """Discover which profile owns a session by scanning state.db files.
+
+    When the Desktop resumes a session without sending ``profile``, this
+    scans every profile's state.db to find the one that contains the
+    session id.  Returns the profile home path or None.
+    """
+    import sqlite3
+    from hermes_constants import get_hermes_home
+
+    root = get_hermes_home()
+    profiles_dir = root / "profiles"
+    db_paths = [root / "state.db"]
+    if profiles_dir.exists():
+        for entry in profiles_dir.iterdir():
+            if entry.is_dir():
+                db = entry / "state.db"
+                if db.exists():
+                    db_paths.append(db)
+
+    for db_path in db_paths:
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cur = conn.execute(
+                "SELECT 1 FROM sessions WHERE id = ? LIMIT 1", (sid,)
+            )
+            if cur.fetchone():
+                conn.close()
+                parent = db_path.parent
+                return Path(parent.resolve())
+            conn.close()
+        except Exception:
+            pass
+    return None
 
 
 # Placeholder ``terminal.cwd`` values that don't name a real directory — the
@@ -4343,6 +4378,12 @@ def _(rid, params: dict) -> dict:
     # and each turn re-bind HERMES_HOME. None/own profile → launch (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
+    # Desktop doesn't send ``profile`` — fall back to gateway's active profile
+    if profile_home is None:
+        from hermes_cli.profiles import get_active_profile_name
+        gw_profile = get_active_profile_name()
+        if gw_profile not in ("default", "custom", ""):
+            profile_home = _profile_home(gw_profile)
 
     # The desktop composer owns its model/effort/fast as plain UI state and ships
     # it on every session.create. Honor each as a PER-SESSION override (built into
@@ -4582,6 +4623,15 @@ def _(rid, params: dict) -> dict:
     # local profile's state.db. None/own profile → the launch profile (unchanged).
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
+    # Desktop doesn't send ``profile`` — try to discover from state.db first,
+    # then fall back to gateway's active profile
+    if profile_home is None:
+        profile_home = _discover_profile_from_session(target)
+    if profile_home is None:
+        from hermes_cli.profiles import get_active_profile_name
+        gw_profile = get_active_profile_name()
+        if gw_profile not in ("default", "custom", ""):
+            profile_home = _profile_home(gw_profile)
 
     # In a profile scope, the agent OWNS a long-lived db handle bound to that
     # profile (do NOT auto-close it here). Otherwise reuse the shared launch db.
