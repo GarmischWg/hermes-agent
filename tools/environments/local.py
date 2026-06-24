@@ -201,6 +201,13 @@ def _inject_context_hermes_home(env: dict) -> None:
         value = get_hermes_home_override()
         if value:
             env["HERMES_HOME"] = value
+            import logging as _log_mod
+            _log_mod.getLogger("tui_gateway.server").info(
+                "_inject_context_hermes_home: override=%s env_hermes_home=%s", value, env.get("HERMES_HOME"))
+        else:
+            import logging as _log_mod
+            _log_mod.getLogger("tui_gateway.server").info(
+                "_inject_context_hermes_home: NO override, env_hermes_home=%s", env.get("HERMES_HOME", "NOT SET"))
     except Exception:
         pass
 

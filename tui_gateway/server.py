@@ -1096,6 +1096,7 @@ def _start_agent_build(sid: str, session: dict) -> None:
         notify_registered = False
         home_token = None
         profile_home = _resolve_profile_home(current, key)
+        logger.info("_build: sid=%s session_key=%s profile_home=%s session.profile_home=%s", sid, key, profile_home, current.get("profile_home"))
         try:
             tokens = _set_session_context(key)
             # Build against the session's profile (global-remote): bind its
@@ -6737,9 +6738,14 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             approval_token = set_current_session_key(session["session_key"])
             session_tokens = _set_session_context(session["session_key"])
             _profile_home_str = session.get("profile_home")
-            logger.debug("prompt.submit: profile_home=%s", _profile_home_str)
+            logger.info("prompt.submit: sid=%s session_key=%s profile_home=%s", sid, session.get("session_key"), _profile_home_str)
             if _profile_home_str:
                 home_token = set_hermes_home_override(_profile_home_str)
+                # Diagnostic: verify the override took effect in THIS thread's context.
+                from hermes_constants import get_hermes_home
+                _resolved_home = get_hermes_home()
+                _env_home = os.environ.get("HERMES_HOME", "NOT SET")
+                logger.info("prompt.submit: override set, get_hermes_home()=%s os.environ HERMES_HOME=%s", _resolved_home, _env_home)
             # The sudo password callback is thread-local (tools.terminal_tool
             # _callback_tls), so wiring it on the build thread doesn't reach this
             # turn thread — terminal sudo prompts would fall through to /dev/tty
