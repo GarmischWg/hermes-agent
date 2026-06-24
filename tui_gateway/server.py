@@ -6714,6 +6714,7 @@ def _start_notification_poller(sid: str, session: dict) -> threading.Event:
 
 
 def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
+    logger.info("_run_prompt_submit: sid=%s session_key=%s profile_home=%s text=%.80s", sid, session.get("session_key"), session.get("profile_home"), str(text)[:80])
     with session["history_lock"]:
         history = list(session["history"])
         history_version = int(session.get("history_version", 0))
@@ -7083,6 +7084,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 pass
             if home_token is not None:
                 reset_hermes_home_override(home_token)
+                logger.info("prompt.submit: override RESET in finally, sid=%s session_key=%s", sid, session.get("session_key"))
             _clear_session_context(session_tokens)
             with session["history_lock"]:
                 session["running"] = False
