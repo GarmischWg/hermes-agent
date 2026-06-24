@@ -820,8 +820,14 @@ def _resolve_profile_home(session: dict, session_key: str) -> str | None:
                 "_resolve_profile_home: key=%s overriding %s -> %s (state.db)",
                 session_key, current, resolved,
             )
+        else:
+            logger.debug(
+                "_resolve_profile_home: key=%s already correct (%s)", session_key, resolved
+            )
         session["profile_home"] = resolved
         return resolved
+    logger.debug("_resolve_profile_home: key=%s discovery returned None, keeping %s",
+                 session_key, current)
     return current
 
 
