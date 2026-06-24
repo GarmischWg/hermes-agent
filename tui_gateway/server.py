@@ -411,16 +411,12 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
     if not session or session.get("_finalized"):
         return
     session["_finalized"] = True
-    # Reset any active HERMES_HOME override established in _start_agent_build.
-    # It is stored on the session dict because resetting it immediately after
-    # agent construction clears it before the lazy system prompt is built
-    # during the first run_conversation() call.  See #50233.
-    home_token = session.pop("_home_token", None)
-    if home_token is not None:
-        try:
-            reset_hermes_home_override(home_token)
-        except Exception:
-            pass
+    # The HERMES_HOME override is now reset in the build thread's own scope
+    # (see _start_agent_build._build), not here.  ContextVar tokens are
+    # context-scoped, so a cross-thread reset was a silent no-op.  The
+    # _home_token key is kept as a pop-no-op for backward compatibility with
+    # any session dicts that still carry it from a pre-patch build.
+    session.pop("_home_token", None)
     _release_active_session_slot(session)
     stop_event = session.get("_notif_stop")
     if stop_event is not None:
@@ -1141,6 +1137,21 @@ def _start_agent_build(sid: str, session: dict) -> None:
             # override is still active here.
             current["config_model_seen"] = _config_model_target()
 
+            # Reset the HERMES_HOME override NOW, in this build thread's own
+            # context.  ContextVar tokens are context-scoped (per-thread for
+            # threading.Thread), so resetting from _finalize_session on another
+            # thread was a silent no-op — the override leaked in this thread's
+            # context forever.  The agent is already constructed with the right
+            # config/skills/db, and the run() thread in _run_prompt_submit sets
+            # its own override (line ~6721) before calling run_conversation(),
+            # so mid-turn get_hermes_home() calls still resolve correctly.
+            if home_token is not None:
+                try:
+                    reset_hermes_home_override(home_token)
+                except Exception:
+                    pass
+                home_token = None
+
             try:
                 worker = _SlashWorker(key, getattr(agent, "model", _resolve_model()), profile_home=profile_home)
                 _attach_worker(sid, current, worker)
@@ -1191,11 +1202,13 @@ def _start_agent_build(sid: str, session: dict) -> None:
             current["agent_error"] = str(e)
             _emit("error", sid, {"message": f"agent init failed: {e}"})
         finally:
-            # Store the home_token on the session so the lazy system prompt
-            # (built during the first run_conversation()) still sees the
-            # profile's HERMES_HOME.  Reset via _finalize_session instead.
+            # Safety net: if _build() threw before the override was reset
+            # above (e.g. _make_agent raised), reset it here in this thread.
             if home_token is not None:
-                current["_home_token"] = home_token
+                try:
+                    reset_hermes_home_override(home_token)
+                except Exception:
+                    pass
             # _attach_worker already closed the worker if this session was
             # reaped mid-build; only the late notify registration can still
             # leak (session.close unregistered before _build registered it).
@@ -3980,6 +3993,7 @@ def _init_session(
     cols: int = 80,
     cwd: str | None = None,
     session_db=None,
+    profile_home: str | None = None,
 ):
     now = time.time()
     with _sessions_lock:
@@ -4002,6 +4016,11 @@ def _init_session(
             "tool_progress_mode": _load_tool_progress_mode(),
             "edit_snapshots": {},
             "tool_started_at": {},
+            # Profile home for cross-profile resume (global-remote mode).
+            # Set at creation time so the slash worker spawn below and every
+            # subsequent _resolve_profile_home call see it without needing a
+            # state.db SQLite scan (which can race under concurrent access).
+            "profile_home": profile_home,
             # Per-session model override set by an in-session /model switch.
             # Honored on rebuild (/new, resume) so a switch in THIS session
             # never leaks into siblings via process-global env vars.
@@ -4939,6 +4958,7 @@ def _(rid, params: dict) -> dict:
                     cols=cols,
                     cwd=profile_resume_cwd,
                     session_db=db,
+                    profile_home=str(profile_home) if profile_home is not None else None,
                 )
             finally:
                 if init_home_token is not None:
@@ -6132,7 +6152,8 @@ def _(rid, params: dict) -> dict:
         finally:
             _clear_session_context(tokens)
         _init_session(
-            new_sid, new_key, agent, list(history), cols=session.get("cols", 80)
+            new_sid, new_key, agent, list(history), cols=session.get("cols", 80),
+            profile_home=session.get("profile_home"),
         )
         if new_sid in _sessions:
             _sessions[new_sid]["active_session_lease"] = lease
