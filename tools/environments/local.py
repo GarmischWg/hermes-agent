@@ -684,6 +684,15 @@ class LocalEnvironment(BaseEnvironment):
 
         _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
 
+        # Diagnostic: log the final HERMES_HOME in the subprocess env right before Popen
+        import logging as _popen_log
+        _popen_log.getLogger("tui_gateway.server").info(
+            "Popen: HERMES_HOME=%s HERMES_SESSION_ID=%s cwd=%s args=%.100s",
+            run_env.get("HERMES_HOME", "NOT SET"),
+            run_env.get("HERMES_SESSION_ID", "NOT SET"),
+            _popen_cwd,
+            str(args)[:100])
+
         proc = subprocess.Popen(
             args,
             text=True,
