@@ -765,9 +765,9 @@ def _discover_profile_from_session(sid: str) -> Path | None:
     session id.  Returns the profile home path or None.
     """
     import sqlite3
-    from hermes_constants import get_hermes_home
+    from hermes_constants import get_default_hermes_root
 
-    root = get_hermes_home()
+    root = get_default_hermes_root()
     profiles_dir = root / "profiles"
     db_paths = [root / "state.db"]
     if profiles_dir.exists():
