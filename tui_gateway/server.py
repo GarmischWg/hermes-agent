@@ -251,6 +251,9 @@ class _SlashWorker:
         env = os.environ.copy()
         if profile_home:
             env["HERMES_HOME"] = profile_home
+            logger.info("slash_worker: session=%s HERMES_HOME=%s (from profile_home)", session_key, profile_home)
+        else:
+            logger.info("slash_worker: session=%s HERMES_HOME=%s (inherited, no profile_home)", session_key, env.get("HERMES_HOME", "NOT SET"))
         self.proc = subprocess.Popen(
             argv,
             stdin=subprocess.PIPE,
@@ -764,6 +767,7 @@ def _discover_profile_from_session(sid: str) -> Path | None:
     scans every profile's state.db to find the one that contains the
     session id.  Returns the profile home path or None.
     """
+    logger.debug("discover_profile: scanning for sid=%s", sid)
     import sqlite3
     from hermes_constants import get_default_hermes_root
 
@@ -776,6 +780,7 @@ def _discover_profile_from_session(sid: str) -> Path | None:
                 db = entry / "state.db"
                 if db.exists():
                     db_paths.append(db)
+    logger.debug("discover_profile: checking %d state.dbs (root=%s)", len(db_paths), root)
 
     for db_path in db_paths:
         try:
@@ -786,10 +791,13 @@ def _discover_profile_from_session(sid: str) -> Path | None:
             if cur.fetchone():
                 conn.close()
                 parent = db_path.parent
-                return Path(parent.resolve())
+                result = Path(parent.resolve())
+                logger.info("discover_profile: sid=%s FOUND in %s", sid, result)
+                return result
             conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("discover_profile: error scanning %s: %s", db_path, exc)
+    logger.info("discover_profile: sid=%s NOT found in any state.db", sid)
     return None
 
 
@@ -4616,6 +4624,8 @@ def _(rid, params: dict) -> dict:
     # Desktop doesn't send ``profile`` — try to discover from state.db
     if profile_home is None:
         profile_home = _discover_profile_from_session(target)
+    logger.info("session.resume: target=%s profile=%s profile_home=%s",
+                target, profile, profile_home)
 
     # In a profile scope, the agent OWNS a long-lived db handle bound to that
     # profile (do NOT auto-close it here). Otherwise reuse the shared launch db.
