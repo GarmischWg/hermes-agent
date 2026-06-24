@@ -396,6 +396,16 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
     if not session or session.get("_finalized"):
         return
     session["_finalized"] = True
+    # Reset any active HERMES_HOME override established in _start_agent_build.
+    # It is stored on the session dict because resetting it immediately after
+    # agent construction clears it before the lazy system prompt is built
+    # during the first run_conversation() call.  See #50233.
+    home_token = session.pop("_home_token", None)
+    if home_token is not None:
+        try:
+            reset_hermes_home_override(home_token)
+        except Exception:
+            pass
     _release_active_session_slot(session)
     stop_event = session.get("_notif_stop")
     if stop_event is not None:
@@ -1096,8 +1106,11 @@ def _start_agent_build(sid: str, session: dict) -> None:
             current["agent_error"] = str(e)
             _emit("error", sid, {"message": f"agent init failed: {e}"})
         finally:
+            # Store the home_token on the session so the lazy system prompt
+            # (built during the first run_conversation()) still sees the
+            # profile's HERMES_HOME.  Reset via _finalize_session instead.
             if home_token is not None:
-                reset_hermes_home_override(home_token)
+                current["_home_token"] = home_token
             # _attach_worker already closed the worker if this session was
             # reaped mid-build; only the late notify registration can still
             # leak (session.close unregistered before _build registered it).
