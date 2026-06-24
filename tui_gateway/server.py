@@ -2271,15 +2271,18 @@ def _restart_slash_worker(sid: str, session: dict):
             pass
     try:
         profile_home = session.get("profile_home")
+        logger.info("_restart_slash_worker: session=%s profile_home_from_dict=%s",
+                    session.get("session_key"), profile_home)
         if profile_home is None:
             discovered = _discover_profile_from_session(session["session_key"])
+            logger.info("_restart_slash_worker: discovery returned %s", discovered)
             if discovered is not None:
                 profile_home = str(discovered)
                 session["profile_home"] = profile_home
         new_worker = _SlashWorker(
             session["session_key"],
             getattr(session.get("agent"), "model", _resolve_model()),
-            profile_home=session.get("profile_home"),
+            profile_home=profile_home,
         )
     except Exception:
         session["slash_worker"] = None
