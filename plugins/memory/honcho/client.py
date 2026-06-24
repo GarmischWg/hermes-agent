@@ -787,8 +787,14 @@ def get_honcho_client(config: HonchoClientConfig | None = None) -> Honcho:
     """
     cached = _honcho_client_slot.peek()
     if cached is not None:
-        _refresh_cached_oauth(cached, config)
-        return cached
+        # If the workspace changed (profile switch), rebuild the client.
+        # Otherwise the singleton reuses the first profile's workspace
+        # for all subsequent sessions, routing Honcho to the wrong place.
+        if config is not None and config.workspace_id != cached.workspace_id:
+            _honcho_client_slot.reset()
+        else:
+            _refresh_cached_oauth(cached, config)
+            return cached
 
     if config is None:
         config = HonchoClientConfig.from_global_config()
