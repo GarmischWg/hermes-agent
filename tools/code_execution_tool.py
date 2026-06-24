@@ -194,6 +194,13 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
             len(_dropped_hermes),
             ", ".join(sorted(_dropped_hermes)),
         )
+    # Diagnostic: log what HERMES_HOME the execute_code child will see
+    import logging as _ec_log
+    _ec_log.getLogger("tui_gateway.server").info(
+        "execute_code _scrub_child_env: child HERMES_HOME=%s (source had %s, override=%s)",
+        scrubbed.get("HERMES_HOME", "NOT SET"),
+        source_env.get("HERMES_HOME", "NOT SET") if isinstance(source_env, dict) else "N/A",
+        __import__("hermes_constants", fromlist=["get_hermes_home_override"]).get_hermes_home_override())
     return scrubbed
 
 

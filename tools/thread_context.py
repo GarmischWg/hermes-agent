@@ -76,6 +76,15 @@ def propagate_context_to_thread(target: Callable) -> Callable:
     absent.
     """
     ctx = contextvars.copy_context()
+    # Diagnostic: capture the HERMES_HOME override at context-copy time
+    try:
+        from hermes_constants import get_hermes_home_override
+        _ctx_override = get_hermes_home_override()
+    except Exception:
+        _ctx_override = "IMPORT_ERROR"
+    import logging as _ctx_log
+    _ctx_log.getLogger("tui_gateway.server").info(
+        "propagate_context: copied context, override=%s", _ctx_override)
     parent_approval_cb = parent_sudo_cb = None
     setters = None
     try:
@@ -88,6 +97,14 @@ def propagate_context_to_thread(target: Callable) -> Callable:
 
     def _runner(*args, **kwargs):
         def _inner():
+            # Diagnostic: verify the override is visible inside the copied context
+            try:
+                from hermes_constants import get_hermes_home_override
+                _inner_override = get_hermes_home_override()
+            except Exception:
+                _inner_override = "IMPORT_ERROR"
+            _ctx_log.getLogger("tui_gateway.server").info(
+                "propagate_context _inner: override visible=%s", _inner_override)
             if setters is not None:
                 set_approval, set_sudo = setters
                 try:

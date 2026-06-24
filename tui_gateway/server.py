@@ -6866,7 +6866,19 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     run_kwargs["task_id"] = session["session_key"]
             except (TypeError, ValueError):
                 pass
+            # Diagnostic: log HERMES_HOME state right before run_conversation
+            from hermes_constants import get_hermes_home, get_hermes_home_override
+            _pre_run_override = get_hermes_home_override()
+            _pre_run_home = get_hermes_home()
+            _pre_run_env = os.environ.get("HERMES_HOME", "NOT SET")
+            logger.info("run_conversation START: sid=%s session_key=%s override=%s get_hermes_home=%s os.environ=%s",
+                        sid, session.get("session_key"), _pre_run_override, _pre_run_home, _pre_run_env)
             result = agent.run_conversation(run_message, **run_kwargs)
+            # Diagnostic: log HERMES_HOME state right after run_conversation
+            _post_run_override = get_hermes_home_override()
+            _post_run_home = get_hermes_home()
+            logger.info("run_conversation END: sid=%s session_key=%s override=%s get_hermes_home=%s os.environ=%s",
+                        sid, session.get("session_key"), _post_run_override, _post_run_home, os.environ.get("HERMES_HOME", "NOT SET"))
 
             last_reasoning = None
             status_note = None
