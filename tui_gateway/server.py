@@ -4382,6 +4382,7 @@ def _(rid, params: dict) -> dict:
 
     profile = (params.get("profile") or "").strip() or None
     profile_home = _profile_home(profile)
+    logger.info("session.create: desktop_profile=%s resolved=%s", profile, profile_home)
 
     # The desktop composer owns its model/effort/fast as plain UI state and ships
     # it on every session.create. Honor each as a PER-SESSION override (built into
@@ -6672,6 +6673,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             approval_token = set_current_session_key(session["session_key"])
             session_tokens = _set_session_context(session["session_key"])
             _profile_home_str = session.get("profile_home")
+            logger.debug("prompt.submit: profile_home=%s", _profile_home_str)
             if _profile_home_str:
                 home_token = set_hermes_home_override(_profile_home_str)
             # The sudo password callback is thread-local (tools.terminal_tool
